@@ -19,7 +19,7 @@ src/core 目录结构
 
     - components：存放 keepAlive 组件
     - global-api：给 Vue 添加全局 API（use、mixin、extend...）
-    - instance：Vue 初始化（生命周期...）
+    - instance：Vue 初始化（合并配置，初始化生命周期，初始化事件中心，初始化渲染，初始化 data、props、computed、watcher ...）
     - observer：数据的收集和订阅
     - vdom：虚拟dom
     - util：工具函数
