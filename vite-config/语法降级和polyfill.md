@@ -162,6 +162,8 @@ npx babel src --out-dir dist
 
 产物输出在dist目录中，你可以去观察一下产物的代码:
 
+![](../images/vite-config/polyfill-1.webp)
+
 Babel 已经根据目标浏览器的配置为我们添加了大量的 Polyfill 代码，index.js文件简单的几行代码被编译成近 300 行。实际上，Babel 所做的事情就是将你的import "core-js"代码替换成了产物中的这些具体模块的导入代码。
 
 但这个配置有一个问题，即无法做到按需导入，上面的产物代码其实有大部分的 Polyfill 的代码我们并没有用到。接下来我们试试useBuiltIns: usage这个按需导入的配置，改动配置后执行编译命令:
@@ -170,7 +172,9 @@ Babel 已经根据目标浏览器的配置为我们添加了大量的 Polyfill �
 npx babel src --out-dir dist
 ```
 
-同样可以看到产物输出在了dist/index.js中
+同样可以看到产物输出在了dist/index.js中，内容如下所示：
+
+![](../images/vite-config/polyfill-2.webp)
 
 >Polyfill 代码主要来自 corejs 和 regenerator-runtime，因此如果要运行起来，必须要装这两个库。
 
@@ -233,3 +237,73 @@ npx babel src --out-dir dist
 ```
 
 我们可以对比一下 @babel/preset-env下的产物结果:
+
+![](../images/vite-config/polyfill-3.webp)
+
+经过对比我们不难发现，transform-runtime 一方面能够让我们在代码中使用非全局版本的 Polyfill，这样就避免全局空间的污染，这也得益于 core-js 的 pure 版本产物特性；另一方面对于asyncToGeneator这类的工具函数，它也将其转换成了一段引入语句，不再将完整的实现放到文件中，节省了编译后文件的体积。
+
+另外，transform-runtime方案引用的基础库也发生了变化，不再是直接引入core-js和regenerator-runtime，而是引入@babel/runtime-corejs3。
+
+好，介绍完了 Babel 语法降级与 Polyfill 注入的底层方案，接下来我们来看看如何在 Vite 中利用这些方案来解决低版本浏览器的兼容性问题。
+
+## Vite 语法降级与 Polyfill 注入
+
+Vite 官方已经为我们封装好了一个开箱即用的方案: @vitejs/plugin-legacy，我们可以基于它来解决项目语法的浏览器兼容问题。这个插件内部同样使用 @babel/preset-env 以及 core-js等一系列基础库来进行语法降级和 Polyfill 注入，因此我觉得对于上文所介绍的底层工具链的掌握是必要的，否则无法理解插件内部所做的事情，真正遇到问题时往往会不知所措。
+
+**插件使用**
+
+```shell
+pnpm i @vitejs/plugin-legacy -D
+```
+
+```js
+// vite.config.ts
+// vite.config.ts
+import legacy from '@vitejs/plugin-legacy';
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [
+    // 省略其它插件
+    legacy({
+      // 设置目标浏览器，browserslist 配置语法
+      targets: ['ie >= 11'],
+    })
+  ]
+})
+```
+
+我们同样可以通过targets指定目标浏览器，这个参数在插件内部会透传给 @babel/preset-env。
+
+在引入插件后，我们可以尝试执行npm run build对项目进行打包，可以看到如下的产物信息:
+
+![](../images/vite-config/polyfill-4.webp)
+
+相比一般的打包过程，多出了index-legacy.js、vendor-legacy.js以及polyfills-legacy.js三份产物文件。让我们继续观察一下index.html的产物内容:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.17e50649.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite App</title>
+    <!-- 1. Modern 模式产物 -->
+    <script type="module" crossorigin src="/assets/index.c1383506.js"></script>
+    <link rel="modulepreload" href="/assets/vendor.0f99bfcc.js">
+    <link rel="stylesheet" href="/assets/index.91183920.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- 2. Legacy 模式产物 -->
+    <script nomodule>兼容 iOS nomodule 特性的 polyfill，省略具体代码</script>
+    <script nomodule id="vite-legacy-polyfill" src="/assets/polyfills-legacy.36fe2f9e.js"></script>
+    <script nomodule id="vite-legacy-entry" data-src="/assets/index-legacy.c3d3f501.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  </body>
+</html>
+```
+
+通过官方的legacy插件， Vite 会分别打包出Modern模式和Legacy模式的产物，然后将两种产物插入同一个 HTML 里面，Modern产物被放到 type="module"的 script 标签中，而Legacy产物则被放到带有 nomodule 的 script 标签中。浏览器的加载策略如下图所示:
+
+![](../images/vite-config/polyfill-5.webp)
