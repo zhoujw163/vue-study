@@ -267,7 +267,7 @@ export default defineConfig({
     // 省略其它插件
     legacy({
       // 设置目标浏览器，browserslist 配置语法
-      targets: ['ie >= 11'],
+      targets: ['> 0.5%, not dead, not ie'],
     })
   ]
 })
